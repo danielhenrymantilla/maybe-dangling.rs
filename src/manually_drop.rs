@@ -122,6 +122,7 @@ impl<T> DerefMut for ManuallyDrop<T> {
 }
 
 impl<T: Default> Default for ManuallyDrop<T> {
+    /// See [`::core::mem::ManuallyDrop::default()`] for more info.
     #[inline]
     fn default() -> Self {
         Self::new(T::default())
@@ -135,34 +136,28 @@ impl<T: Clone> Clone for ManuallyDrop<T> {
     }
 
     JustDerefTM! {
-        /// See [`::core::mem::ManuallyDrop::clone_from()`] for more info.
         fn clone_from(self: &mut Self, source: &Self);
     }
 }
 
 JustDerefTM! {
     impl<T: Debug> Debug for ManuallyDrop<T> {
-        /// See [`::core::mem::ManuallyDrop::fmt()`] for more info.
         fn fmt(self: &Self, f: &mut fmt::Formatter<'_>) -> fmt::Result;
     }
 
     impl<T: Hash> Hash for ManuallyDrop<T> {
-        /// See [`::core::mem::ManuallyDrop::hash()`] for more info.
         fn hash<__H: hash::Hasher>(self: &Self, state: &mut __H);
     }
 
     impl<T: Ord> Ord for ManuallyDrop<T> {
-        /// See [`::core::mem::ManuallyDrop::cmp()`] for more info.
         fn cmp(self: &Self, other: &Self) -> Ordering;
     }
 
     impl<T: PartialOrd> PartialOrd for ManuallyDrop<T> {
-        /// See [`::core::mem::ManuallyDrop::partial_cmp()`] for more info.
         fn partial_cmp(self: &Self, other: &Self) -> Option<Ordering>;
     }
 
     impl<T: PartialEq> PartialEq for ManuallyDrop<T> {
-        /// See [`::core::mem::ManuallyDrop::eq()`] for more info.
         fn eq(self: &Self, other: &Self) -> bool;
     }
 
