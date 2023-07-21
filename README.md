@@ -28,7 +28,7 @@ This crates offers two types, `ManuallyDrop<T>`, and `MaybeDangling<T>`, which d
 
 ## References
 
-  - ### The RFC that shall eventually and ultimately supersede this very crate: <https://github.com/rust-lang/rfcs/pull/3336>
+  - **The RFC that shall eventually and ultimately supersede this very crate: <https://github.com/rust-lang/rfcs/pull/3336>**
 
   - The `miri` PR implementing the check against this: <https://github.com/rust-lang/miri/pull/2985>
 
