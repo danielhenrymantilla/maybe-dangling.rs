@@ -28,10 +28,11 @@ jobs:
         feature-nightly-dropck_eyepatch: ['', '--features nightly-dropck_eyepatch']
         include:
           # Also future-proof against semver breakage from dependencies.
-          - os: ubuntu-latest
-            rust-toolchain: stable
-            cargo-locked: ''
-            feature-nightly-dropck_eyepatch: ''
+          # (But we don't have any dependencies yet, so don't actually run this.)
+          # - os: ubuntu-latest
+          #   rust-toolchain: stable
+          #   cargo-locked: ''
+          #   feature-nightly-dropck_eyepatch: ''
     steps:
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
