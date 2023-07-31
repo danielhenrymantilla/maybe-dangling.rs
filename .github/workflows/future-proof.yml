@@ -35,11 +35,9 @@ jobs:
           #   feature-nightly-dropck_eyepatch: ''
     steps:
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: default
-          override: true
-          toolchain: ${{ matrix.rust-toolchain }}
+        run: |
+          rustup toolchain install "${{ matrix.rust-toolchain }}"
+          rustup override set "${{ matrix.rust-toolchain }}"
 
       - name: Clone repo
         uses: actions/checkout@v2
@@ -49,12 +47,11 @@ jobs:
         run: cargo update -v
 
       - name: Cargo test
-        uses: actions-rs/cargo@v1
         env:
           RUSTC_BOOTSTRAP: 1
-        with:
-          command: test
-          args: |
-            --features better-docs
-            ${{ matrix.cargo-locked }}
-            ${{ matrix.feature-nightly-dropck_eyepatch }}
+        run: |
+          cargo test \
+            --features better-docs \
+            ${{ matrix.cargo-locked }} \
+            ${{ matrix.feature-nightly-dropck_eyepatch }} \
+          ;
