@@ -36,4 +36,4 @@ This crates offers two types, `ManuallyDrop<T>`, and `MaybeDangling<T>`, which d
 
   - The soundness problem of `::yoke` stemming from not using this: <https://github.com/unicode-org/icu4x/issues/3696>
 
-  - [An URLO thread on the topic, and my post exposing the intention to write this very crate](https://users.rust-lang.org/t/unsafe-code-review-semi-owning-weak-rwlock-t-guard/95706/15?u=yandros)
+  - [An URLO thread on the topic, and a post exposing the intention to write this very crate](https://users.rust-lang.org/t/unsafe-code-review-semi-owning-weak-rwlock-t-guard/95706/15?u=yandros)
