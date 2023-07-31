@@ -53,4 +53,5 @@ jobs:
           cargo test \
             --features better-docs \
             ${{ matrix.cargo-locked }} \
-            ${{ matrix.feature-nightly-dropck_eyepatch }}
+            ${{ matrix.feature-nightly-dropck_eyepatch }} \
+          ;
