@@ -1,4 +1,5 @@
-use {crate::ManuallyDrop, ::core::mem::ManuallyDrop as StdMD};
+use crate::ManuallyDrop;
+use ::core::mem::ManuallyDrop as StdMD;
 
 /// Like [`crate::ManuallyDrop`] but for having `drop` glue.
 /// This wrapper is 0-cost.
