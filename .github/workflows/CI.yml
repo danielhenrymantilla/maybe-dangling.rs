@@ -11,6 +11,16 @@ on:
   pull_request:
 
 jobs:
+  # == FORMATTING CHECK == #
+  fmt:
+    name: "Check formatting"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      # GitHub runners come with cargo fmt already installed, so we don't
+      # even need to install a toolchain unless it turns out stale.
+      - run: cargo fmt --check
+
   # == CHECK == #
   check:
     name: "Check beta stable and MSRV=1.65.0"

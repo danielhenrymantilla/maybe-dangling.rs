@@ -1,11 +1,5 @@
-use {
-    ::core::{
-        mem::{ManuallyDrop as StdMD},
-    },
-    crate::{
-        ManuallyDrop,
-    },
-};
+use crate::ManuallyDrop;
+use ::core::mem::ManuallyDrop as StdMD;
 
 /// Like [`crate::ManuallyDrop`] but for having `drop` glue.
 /// This wrapper is 0-cost.
@@ -55,9 +49,7 @@ impl<T> MaybeDangling<T> {
     pub fn into_inner(slot: MaybeDangling<T>) -> T {
         #![allow(unsafe_code)]
         // Safety: this is the defuse inherent drop glue pattern.
-        unsafe {
-            ManuallyDrop::take(&mut StdMD::new(slot).value)
-        }
+        unsafe { ManuallyDrop::take(&mut StdMD::new(slot).value) }
     }
 }
 
@@ -85,7 +77,6 @@ crate::cfg_match! {
         }
     },
 }
-
 
 impl<T> ::core::ops::DerefMut for MaybeDangling<T> {
     #[inline]

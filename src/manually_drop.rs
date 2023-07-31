@@ -89,9 +89,7 @@ impl<T> ManuallyDrop<T> {
     #[must_use = "if you don't need the value, you can use `ManuallyDrop::drop` instead"]
     #[inline]
     pub unsafe fn take(slot: &mut ManuallyDrop<T>) -> T {
-        unsafe {
-            slot.value.as_ptr().read()
-        }
+        unsafe { slot.value.as_ptr().read() }
     }
 
     /// Manually drops the contained value.
@@ -99,9 +97,7 @@ impl<T> ManuallyDrop<T> {
     /// See [`::core::mem::ManuallyDrop::drop()`] for more info.
     #[inline]
     pub unsafe fn drop(slot: &mut ManuallyDrop<T>) {
-        unsafe {
-            slot.value.as_mut_ptr().drop_in_place()
-        }
+        unsafe { slot.value.as_mut_ptr().drop_in_place() }
     }
 }
 
@@ -117,15 +113,11 @@ impl<T> DerefMut for ManuallyDrop<T> {
             #[inline]
             /// See [`::core::mem::ManuallyDrop::deref()`] for more info.
             fn deref(self: &Self) -> &T {
-                unsafe {
-                    self.value.assume_init_ref()
-                }
+                unsafe { self.value.assume_init_ref() }
             }
         }
 
-        unsafe {
-            self.value.assume_init_mut()
-        }
+        unsafe { self.value.assume_init_mut() }
     }
 }
 
@@ -176,8 +168,6 @@ JustDerefTM! {
 
     impl<T: Eq> Eq for ManuallyDrop<T> {}
 }
-
-
 
 macro_rules! JustDerefTM {
     (
