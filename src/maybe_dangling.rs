@@ -36,26 +36,88 @@ use ::core::mem::ManuallyDrop as StdMD;
 /// handles transitive drop glue when checking for dangling pointers.
 /// All three scenarios are theoretically sound, since no dangling pointer is
 /// ever accessed in any destructor.
-/// But none will compile without the `nightly-dropck_eyepatch` feature there
+/// But none will compile without the `nightly-dropck_eyepatch` feature enabled
 /// to relax Drop Check into thinking that we won't accidentially access a
 /// dangling pointer.
 /// The `nightly-dropck_eyepatch` provides the flexibility to make the first
 /// two cases compile.
 ///
-/// #### Scenario 1: `T` has no destructor
+/// #### What does it mean to have a "dangling `T`"?
+///
+/// Note that the terminology of a "dangling `T`" can be a bit hard to
+/// visualize. The idea is to consider some `'dangling` lifetime (_e.g._,
+/// some `&'dangling` borrow), to then imagine different type definitions
+/// involving it.
+///
+/// For instance:
+///
+///  1. `T = &'dangling str`
+///  2. `T = PrintOnDrop<&'dangling str>`,
+///  3. `T = Box<&'dangling str>`,
+///  4. `T = (u8, Box<PrintOnDrop<&'dangling str>>)`,
+///  5. `T = &mut PrintOnDrop<&'dangling str>`,
+///
+/// The key idea is that there are three kind of types, here:
+///   - the types with no drop glue at all, _i.e._, types for which
+///     `mem::needs_drop::<T>()` returns `false`: `1.` and `5.`.
+///
+///     Such types should be allowed to go out of scope at a point
+///     where their lifetime may be `'dangling`.
+///
+///   - the types with drop glue involving a dereference of the
+///     `&'dangling` reference: `2.` and `4.`
+///
+///     Such types should never be allowed to go out of scope at a
+///     point where their lifetime may be `'dangling`.
+///
+///   - the types with drop glue, but not involving a dereference of the
+///     `&'dangling` reference: `3.`
+///
+///     Such types _can be allowed_ to go out of scope (and thus, run
+///     their drop glue) at a point where their lifetime may be
+///     `'dangling`.
+///
+/// Notice how a useful distinction thus revolves around the presence
+/// of "drop glue" or lack thereof, to determine whether we are in the
+/// first group, or the other two. On the other hand, whether a type
+/// _directly_ `impl`ements `Drop`, such as `Box` or `PrintOnDrop`, or
+/// does not (wrapper types containing it, such as `String` w.r.t the
+/// `Drop impl` of `Vec<u8>`, or `(u8, Box<...>, )` in that `4.`th example),
+/// is not enough information to distinguish between the two:
+///   - `2.` and `3.` both `impl Drop`, and yet belong to different
+///     categories,
+///   - `4.` does not `impl Drop`, and yet belongs to the same
+///     category as `2.`.
+///
+/// See the [`drop_bounds` lint](
+/// https://doc.rust-lang.org/1.71.0/nightly-rustc/rustc_lint/traits/static.DROP_BOUNDS.html#explanation)
+/// for more info.
+///
+/// The real distinction between the second and third groups is
+/// whether the wrapper type, when dropped, _merely drops_ its
+/// inner `T` (like `Box<T>` does), or if it unconditionally uses any
+/// other API of the type, like `PrintOnDrop<T : Debug>` does.
+///
+/// With that context in mind, let's look at the three scenarios:
+///
+/// #### Scenario 1: `T` has no drop glue (_e.g._, `T = &'dangling str`)
 ///
 /// With `#[may_dangle]` we are able to communicate to Drop Check that
-/// `MaybeDangling` won't access the potentially dangling `T` in its destructor,
-/// *unless* `T` is invovled in transitive drop glue, i.e. `T` implements `Drop`
-/// itself.
-/// Since `T` does not implement `Drop`, Drop Check will allow this to compile,
+/// `MaybeDangling` won't access the potentially dangling `T` (`&'dangling`)
+/// in its destructor (_e.g._, the `str` behind `T = &'dangling str`),
+/// *unless* `T`'s `'dangling` lifetime is involved in transitive drop glue, _i.e._:
+///   - whenever `T` implements `Drop` (without `#[may_dangle]`);
+///   - or whenever `T` transitively owns some field with drop glue involving `'dangling`.
+///
+/// Since `T` does not have drop glue (`mem::needs_drop::<T>()` returns `false`),
+/// Drop Check will allow this to compile,
 /// even though the reference stored in `Wrapper` is dangling when `v` gets
 /// dropped:
 ///
 /// ```
 /// # #[cfg(feature = "nightly-dropck_eyepatch")]
 /// # {
-/// use maybe_dangling::MaybeDangling;
+/// use ::maybe_dangling::MaybeDangling;
 ///
 /// struct Wrapper<'a>(&'a str);
 ///
@@ -63,11 +125,11 @@ use ::core::mem::ManuallyDrop as StdMD;
 ///     let s: String = "I will dangle".into();
 ///     let v = MaybeDangling::new(Wrapper(&s));
 ///     drop(s); // <- causes the reference in `Wrapper` to dangle
-/// } // <- `v` dropped here
+/// } // <- `v` dropped here, despite containing a `&'dangling s` reference!
 /// # }
 /// ```
 ///
-/// #### Scenario 2: `T` has a destructor, but uses `#[may_dangle]`
+/// #### Scenario 2: `T` has drop glue known not to involve `'dangling`
 ///
 /// Now that `T` has a destructor, it must be executed when `v` is dropped.
 /// With `#[may_dangle]` we tell Drop Check that we don't access the inner
@@ -77,7 +139,7 @@ use ::core::mem::ManuallyDrop as StdMD;
 /// # #![cfg_attr(feature = "nightly-dropck_eyepatch", feature(dropck_eyepatch))]
 /// # #[cfg(feature = "nightly-dropck_eyepatch")]
 /// # {
-/// use maybe_dangling::MaybeDangling;
+/// use ::maybe_dangling::MaybeDangling;
 ///
 /// struct Wrapper<'a>(&'a str);
 ///
@@ -95,18 +157,16 @@ use ::core::mem::ManuallyDrop as StdMD;
 /// # }
 /// ```
 ///
-/// #### Scenario 3: `T` has a destructor and does not use `#[may_dangle]`
+/// #### Scenario 3: `T` has drop glue (potentially) involving `'dangling`
 ///
-/// This scenario is the same as the previous one, but without `#[maybe_dangle]`.
+/// This scenario is the same as the previous one, but without `#[may_dangle]`.
 /// Drop Check does not know about the internals of `T`'s destructor, so it
-/// can't tell whether the inner reference will be accessed.
+/// can't tell whether the inner `&'dangling` reference will be accessed.
 /// Therefore, this will cause a compilation error, even with the
 /// `nightly-dropck_eyepatch` feature enabled.
 ///
 /// ```compile_fail
-/// # #[cfg(feature = "nightly-dropck_eyepatch")]
-/// # {
-/// use maybe_dangling::MaybeDangling;
+/// use ::maybe_dangling::MaybeDangling;
 ///
 /// struct Wrapper<'a>(&'a str);
 ///
@@ -121,23 +181,20 @@ use ::core::mem::ManuallyDrop as StdMD;
 ///     let v = MaybeDangling::new(Wrapper(&s));
 ///     drop(s); // <- causes the reference in `Wrapper` to dangle
 /// } // <- `v` dropped here
-/// # }
-/// # #[cfg(not(feature = "nightly-dropck_eyepatch"))]
-/// # {
-/// #     // to make the snippet not compile when `nightly-dropck_eyepatch`
-/// #     // feature is not enabled
-/// #     fn main() { 0 }
-/// # }
 /// ```
 ///
-/// Here a summary of which of the scenarios shown above can be compiled, with
+/// </details>
+///
+/// #### Summary: when is a `MaybeDangling<...'dangling...>` allowed to go out of scope
+///
+/// Here is a summary of which of the scenarios shown above can be compiled, with
 /// or without the `nightly-dropck_eyepatch` feature enabled:
 ///
-/// | `T` | With `nightly-dropck_eyepatch` | Without `nightly-dropck_eyepatch` |
+/// | `MaybeDangling<T>`<br/><br/>`where T` | With `nightly-dropck_eyepatch` | Without `nightly-dropck_eyepatch` |
 /// | --- | --- | --- |
-/// | Without destructor | ✅ | ❌ |
-/// | With destructor and with `#[maybe_dangle]` | ✅ | ❌ |
-/// | With destructor and without `#[maybe_dangle]` | ❌ | ❌ |
+/// | has no drop glue<br/>_e.g._<br/>`T=&'dangling str` | ✅ | ❌ |
+/// | has drop glue but not involving `'dangling`<br/>_e.g._<br/>`T=Box<&'dangling str>` | ✅ | ❌ |
+/// | has drop glue involving `'dangling`<br/>_e.g._<br/>`T=PrintOnDrop<&'dangling str>` | ❌ | ❌ |
 ///
 /// ### See also
 ///
@@ -148,9 +205,9 @@ use ::core::mem::ManuallyDrop as StdMD;
 /// in the Rustonomicon.
 ///
 /// [RFC-1327]: https://rust-lang.github.io/rfcs/1327-dropck-param-eyepatch.html
-/// [dropck-std]: https://doc.rust-lang.org/std/ops/trait.Drop.html#drop-check
-/// [dropck-nomicon]: https://doc.rust-lang.org/nomicon/dropck.html
-/// [dropck-generics]: https://doc.rust-lang.org/nomicon/phantom-data.html#generic-parameters-and-drop-checking
+/// [dropck-std]: https://doc.rust-lang.org/1.71.0/std/ops/trait.Drop.html#drop-check
+/// [dropck-nomicon]: https://doc.rust-lang.org/1.71.0/nomicon/dropck.html
+/// [dropck-generics]: https://doc.rust-lang.org/1.71.0/nomicon/phantom-data.html#generic-parameters-and-drop-checking
 pub struct MaybeDangling<T> {
     value: ManuallyDrop<T>,
     #[cfg(feature = "nightly-dropck_eyepatch")]
