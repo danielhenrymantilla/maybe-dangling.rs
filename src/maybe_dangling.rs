@@ -28,6 +28,10 @@ use ::core::mem::ManuallyDrop as StdMD;
 /// [eponymous `rustc` feature][RFC-1327] so as to get the `Drop` impl amended
 /// accordingly.
 ///
+/// Explanation:
+///
+/// <details class="custom"><summary><span class="summary-box"><span>Click to show</span></span></summary>
+///
 /// Below are three scenarios that should illustrate how Drop Check (`dropck`)
 /// handles transitive drop glue when checking for dangling pointers.
 /// All three scenarios are theoretically sound, since no dangling pointer is
