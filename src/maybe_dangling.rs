@@ -25,22 +25,12 @@ use ::core::mem::ManuallyDrop as StdMD;
 ///
 /// For the adventurous `nightly` users, you can enable the
 /// `nightly-dropck_eyepatch` Cargo feature to opt into the usage of the
-/// [eponymous `rustc` feature][RFC-1327] so as to get the `Drop` impl amended
-/// accordingly.
+/// [eponymous `rustc` feature][RFC-1327] so as to get the `Drop` implementation
+/// amended accordingly.
 ///
 /// Explanation:
 ///
 /// <details class="custom"><summary><span class="summary-box"><span>Click to show</span></span></summary>
-///
-/// Below are three scenarios that should illustrate how Drop Check (`dropck`)
-/// handles transitive drop glue when checking for dangling pointers.
-/// All three scenarios are theoretically sound, since no dangling pointer is
-/// ever accessed in any destructor.
-/// But none will compile without the `nightly-dropck_eyepatch` feature enabled
-/// to relax Drop Check into thinking that we won't accidentially access a
-/// dangling pointer.
-/// The `nightly-dropck_eyepatch` provides the flexibility to make the first
-/// two cases compile.
 ///
 /// #### What does it mean to have a "dangling `T`"?
 ///
@@ -57,83 +47,106 @@ use ::core::mem::ManuallyDrop as StdMD;
 ///  4. `T = (u8, Box<PrintOnDrop<&'dangling str>>)`,
 ///  5. `T = &mut PrintOnDrop<&'dangling str>`,
 ///
-/// The key idea is that there are three kind of types, here:
-///   - the types with no drop glue at all, _i.e._, types for which
-///     `mem::needs_drop::<T>()` returns `false`: `1.` and `5.`.
+/// The key idea is that there are three categories of types here:
 ///
-///     Such types should be allowed to go out of scope at a point
-///     where their lifetime may be `'dangling`.
+///   1. The types with no drop glue at all, _i.e._, types for which
+///      `mem::needs_drop::<T>()` returns `false`: types 1. and 5.
 ///
-///   - the types with drop glue involving a dereference of the
-///     `&'dangling` reference: `2.` and `4.`
+///      Such types _should be allowed_ to go out of scope at a point
+///      where their lifetime may be `'dangling`.
 ///
-///     Such types should never be allowed to go out of scope at a
-///     point where their lifetime may be `'dangling`.
+///   2. The types with drop glue known not to involve a dereference of
+///      the `&'dangling` reference: type 3.
 ///
-///   - the types with drop glue, but not involving a dereference of the
-///     `&'dangling` reference: `3.`
+///      Such types _can be allowed_ to go out of scope (and thus, run
+///      their drop glue) at a point where their lifetime may be
+///      `'dangling`.
 ///
-///     Such types _can be allowed_ to go out of scope (and thus, run
-///     their drop glue) at a point where their lifetime may be
-///     `'dangling`.
+///   3. The types with drop glue (potentially) involving a dereference
+///      of the `&'dangling` reference: types 2. and 4.
+///
+///      Such types _should never be allowed_ to go out of scope at a
+///      point where their lifetime may be `'dangling`.
 ///
 /// Notice how a useful distinction thus revolves around the presence
-/// of "drop glue" or lack thereof, to determine whether we are in the
-/// first group, or the other two. On the other hand, whether a type
-/// _directly_ `impl`ements `Drop`, such as `Box` or `PrintOnDrop`, or
-/// does not (wrapper types containing it, such as `String` w.r.t the
-/// `Drop impl` of `Vec<u8>`, or `(u8, Box<...>, )` in that `4.`th example),
-/// is not enough information to distinguish between the two:
-///   - `2.` and `3.` both `impl Drop`, and yet belong to different
+/// of drop glue or lack thereof, to determine whether we are in the
+/// first category, or the other two. On the other hand, whether a type
+/// _directly_ implements `Drop`, such as `Box` or `PrintOnDrop`, or
+/// does not (wrapper types containing it, such as `String` w.r.t. the
+/// `Drop` implementation of the underlying `Vec<u8>`, or `(u8, Box<...>)`
+/// in the fourth example type above), is not enough information to
+/// distinguish between the two, as
+///
+///   - types 2. and 3. both implement `Drop`, and yet belong to different
 ///     categories,
-///   - `4.` does not `impl Drop`, and yet belongs to the same
-///     category as `2.`.
 ///
-/// See the [`drop_bounds` lint](
-/// https://doc.rust-lang.org/1.71.0/nightly-rustc/rustc_lint/traits/static.DROP_BOUNDS.html#explanation)
-/// for more info.
+///   - type 4. does not implement `Drop`, and yet belongs to the same
+///     category as type 2.
 ///
-/// The real distinction between the second and third groups is
-/// whether the wrapper type, when dropped, _merely drops_ its
-/// inner `T` (like `Box<T>` does), or if it unconditionally uses any
-/// other API of the type, like `PrintOnDrop<T : Debug>` does.
+/// See the [`drop_bounds` lint] for more info.
 ///
-/// With that context in mind, let's look at the three scenarios:
+/// The distinction between the second and third category is whether a generic
+/// type, when dropped,
 ///
-/// #### Scenario 1: `T` has no drop glue (_e.g._, `T = &'dangling str`)
+/// 1. merely drops its inner `T` (like `Box<T>` does) and
 ///
-/// With `#[may_dangle]` we are able to communicate to Drop Check that
-/// `MaybeDangling` won't access the potentially dangling `T` (`&'dangling`)
-/// in its destructor (_e.g._, the `str` behind `T = &'dangling str`),
-/// *unless* `T`'s `'dangling` lifetime is involved in transitive drop glue, _i.e._:
+/// 2. makes it known to the [drop checker] that it does so.
+///
+/// If a type violates either restriction, either by unconditionally using any
+/// other API of `T`, like `PrintOnDrop<T: Debug>` does, or by not making
+/// it known to the drop checker that it merely drops its inner `T`, it will
+/// belong to category 3, which can't be allowed to compile.
+///
+/// Making it known to the drop checker that `T` is merely dropped requires
+/// the unstable [`#[may_dangle]`][RFC-1327] attribute.
+/// The drop checker does not know the implementation details of any
+/// `Drop` implementation.
+/// It can't statically analyse how `T` is used in the destructor.
+/// Instead, drop check requires every generic argument to strictly
+/// outlive the wrapper type to guarantee soundness.
+/// This can be overly restrictive when merely dropping `T`, making it
+/// impossible to have `Drop` implementations where `T` might be dangling,
+/// even if dropping a dangling `T` would be sound in the given context.
+/// Hence the `#[may_dangle]` attribute is required to manually and _unsafely_
+/// tell drop check that `T` is merely dropped in the generic type's
+/// destructor, relaxing the drop checker in situations where its soundness
+/// requirements are overly restrictive.
+/// With the `nightly-dropck_eyepatch` feature enabled, <code>[MaybeDangling]\<T\></code>
+/// uses `#[may_dangle]` under the hood to let drop check know that it won't
+/// access the potentially dangling `T` (_e.g._, the `str` behind
+/// `T = &'dangling str`) in its destructor, [*unless*][dropck-generics] `T`'s
+/// `'dangling` lifetime is involved in transitive drop glue, _i.e._:
 ///   - whenever `T` implements `Drop` (without `#[may_dangle]`);
-///   - or whenever `T` transitively owns some field with drop glue involving `'dangling`.
+///   - or whenever `T` transitively owns some field with drop glue involving
+///     `'dangling`.
+///
+/// With that context in mind, let's look at examples for the three categories:
+///
+/// #### Category 1: `T` has no drop glue (_e.g._, `T = &'dangling str`)
 ///
 /// Since `T` does not have drop glue (`mem::needs_drop::<T>()` returns `false`),
-/// Drop Check will allow this to compile,
-/// even though the reference stored in `Wrapper` is dangling when `v` gets
-/// dropped:
+/// the drop checker will allow this to compile, even though the reference
+/// dangles when `v` gets dropped:
 ///
 /// ```
 /// # #[cfg(feature = "nightly-dropck_eyepatch")]
 /// # {
 /// use ::maybe_dangling::MaybeDangling;
 ///
-/// struct Wrapper<'a>(&'a str);
-///
 /// fn main() {
 ///     let s: String = "I will dangle".into();
-///     let v = MaybeDangling::new(Wrapper(&s));
-///     drop(s); // <- causes the reference in `Wrapper` to dangle
+///     let v = MaybeDangling::new(&s);
+///     drop(s); // <- makes `&s` dangle
 /// } // <- `v` dropped here, despite containing a `&'dangling s` reference!
 /// # }
 /// ```
 ///
-/// #### Scenario 2: `T` has drop glue known not to involve `'dangling`
+/// #### Category 2: `T` has drop glue known not to involve `'dangling` (_e.g._, `T = Box<&'dangling str>`)
 ///
-/// Now that `T` has a destructor, it must be executed when `v` is dropped.
-/// With `#[may_dangle]` we tell Drop Check that we don't access the inner
-/// reference, so it is safe for it to dangle when the destructor is executed:
+/// Now that `T` is has drop glue, it must be executed when `v` is dropped.
+/// `Box<&'dangling str>`'s `Drop` implementation is known not to involve
+/// `'dangling`, so it is safe for `&'dangling str` to dangle when the `Box`
+/// is dropped:
 ///
 /// ```
 /// # #![cfg_attr(feature = "nightly-dropck_eyepatch", feature(dropck_eyepatch))]
@@ -141,78 +154,120 @@ use ::core::mem::ManuallyDrop as StdMD;
 /// # {
 /// use ::maybe_dangling::MaybeDangling;
 ///
-/// struct Wrapper<'a>(&'a str);
-///
-/// // we pinky-swear not to access the potentially dangling pointer, so `dropck`
-/// // will let us compile this snippet
-/// unsafe impl<#[may_dangle] 'a> Drop for Wrapper<'a> {
-///     fn drop(&mut self) { }
-/// }
-///
 /// fn main() {
 ///     let s: String = "I will dangle".into();
-///     let v = MaybeDangling::new(Wrapper(&s));
-///     drop(s); // <- causes the reference in `Wrapper` to dangle
-/// } // <- `v` dropped here
+///     let v = MaybeDangling::new(Box::new(&s));
+///     drop(s); // <- makes `&s` dangle
+/// } // <- `v`, and thus `Box(&s)` dropped here
 /// # }
 /// ```
 ///
-/// #### Scenario 3: `T` has drop glue (potentially) involving `'dangling`
+/// #### Category 3: `T` has drop glue (potentially) involving `'dangling` (_e.g._, `T = PrintOnDrop<&'dangling str>`)
 ///
-/// This scenario is the same as the previous one, but without `#[may_dangle]`.
-/// Drop Check does not know about the internals of `T`'s destructor, so it
-/// can't tell whether the inner `&'dangling` reference will be accessed.
-/// Therefore, this will cause a compilation error, even with the
-/// `nightly-dropck_eyepatch` feature enabled.
+/// Like the second category, `T` now has drop glue.
+/// But unlike category 2., `T` now has drop glue either involving `'dangling`
+/// or not informing the drop checker that `'dangling` is unused.
+/// Let's look at an example where `'dangling` is involved in drop glue:
 ///
 /// ```compile_fail
 /// use ::maybe_dangling::MaybeDangling;
 ///
-/// struct Wrapper<'a>(&'a str);
+/// use ::std::fmt::Debug;
 ///
-/// // `dropck` will not know we don't access the dangling pointer and won't let
-/// // us compile this snippet
-/// impl<'a> Drop for Wrapper<'a> {
-///     fn drop(&mut self) { }
+/// struct PrintOnDrop<T: Debug>(T);
+///
+/// impl<T: Debug> Drop for PrintOnDrop<T> {
+///     fn drop(&mut self) {
+///          println!("Using the potentially dangling `T` in our destructor: {:?}", self.0);
+///     }
 /// }
 ///
 /// fn main() {
 ///     let s: String = "I will dangle".into();
-///     let v = MaybeDangling::new(Wrapper(&s));
-///     drop(s); // <- causes the reference in `Wrapper` to dangle
-/// } // <- `v` dropped here
+///     let v = MaybeDangling::new(PrintOnDrop(&s));
+///     drop(s); // <- makes `&s` dangle
+/// } // <- `v`, and thus `PrintOnDrop(&s)` dropped here, causing a use-after-free ! ⚠️
 /// ```
+///
+/// The example above should never be allowed to compile as `PrintOnDrop`
+/// will dereference `&'dangling str`, which points to a `str` that already
+/// got dropped and invalidated, causing undefined behavior.
+///
+/// An example for a type where `'dangling` is not involved in any drop glue
+/// but does not relax the drop checker with `#[may_dangle]` would be:
+///
+/// ```compile_fail
+/// use ::maybe_dangling::MaybeDangling;
+///
+/// struct MerelyDrop<T>(T);
+///
+/// impl<T> Drop for MerelyDrop<T> {
+///     fn drop(&mut self) {
+///          println!("Not using the potentially dangling `T` in our destructor");
+///     }
+/// }
+///
+/// fn main() {
+///     let s: String = "I will dangle".into();
+///     let v = MaybeDangling::new(MerelyDrop(&s));
+///     drop(s); // <- makes `&s` dangle
+/// } // <- `v`, and thus `MerelyDrop(&s)` dropped here
+/// ```
+///
+/// To amend the example above and move from category 3. to category 2. and
+/// make it compile, `#[may_dangle]` can be applied to `T` in `MerelyDrop`'s
+/// `Drop` implementation:
+///
+/// ```
+/// # #![cfg_attr(feature = "nightly-dropck_eyepatch", feature(dropck_eyepatch))]
+/// # #[cfg(feature = "nightly-dropck_eyepatch")]
+/// # {
+/// #![feature(dropck_eyepatch)]
+///
+/// use ::maybe_dangling::MaybeDangling;
+///
+/// struct MerelyDrop<T>(T);
+///
+/// unsafe impl<#[may_dangle] T> Drop for MerelyDrop<T> {
+///     fn drop(&mut self) {
+///          println!("Not using the potentially dangling `T` in our destructor");
+///     }
+/// }
+///
+/// fn main() {
+///     let s: String = "I will dangle".into();
+///     let v = MaybeDangling::new(MerelyDrop(&s));
+///     drop(s); // <- makes `&s` dangle
+/// } // <- `v`, and thus `MerelyDrop(&s)` dropped here
+/// # }
+/// ```
+///
+/// Note that the `Drop` implementation is _unsafe_ now, as we are still free
+/// to use the dangling `T` in the destructor.
+/// We only pinky-swear to the drop checker that we won't.
 ///
 /// </details>
 ///
 /// #### Summary: when is a `MaybeDangling<...'dangling...>` allowed to go out of scope
 ///
-/// Here is a summary of which of the scenarios shown above can be compiled, with
+/// This table summarises which of the categories shown above can be compiled, with
 /// or without the `nightly-dropck_eyepatch` feature enabled:
 ///
 /// | `MaybeDangling<T>`<br/><br/>`where T` | With `nightly-dropck_eyepatch` | Without `nightly-dropck_eyepatch` |
 /// | --- | --- | --- |
-/// | has no drop glue<br/>_e.g._<br/>`T=&'dangling str` | ✅ | ❌ |
-/// | has drop glue but not involving `'dangling`<br/>_e.g._<br/>`T=Box<&'dangling str>` | ✅ | ❌ |
-/// | has drop glue involving `'dangling`<br/>_e.g._<br/>`T=PrintOnDrop<&'dangling str>` | ❌ | ❌ |
-///
-/// ### See also
-///
-/// For further information on how automatic drop glue works, see the
-/// "Drop Check" sections of the [`Drop` trait][dropck-std] and the
-/// [Rustonomicon][dropck-nomicon] and the section on how
-/// [drop-checking works with generic parameters][dropck-generics], also found
-/// in the Rustonomicon.
+/// | has no drop glue<br/>_e.g._<br/>`T = &'dangling str` | ✅ | ❌ |
+/// | has drop glue known not to involve `'dangling`<br/>_e.g._<br/>`T = Box<&'dangling str>` | ✅ | ❌ |
+/// | has drop glue (potentially) involving `'dangling`<br/>_e.g._<br/>`T = PrintOnDrop<&'dangling str>` | ❌ | ❌ |
 ///
 /// [RFC-1327]: https://rust-lang.github.io/rfcs/1327-dropck-param-eyepatch.html
-/// [dropck-std]: https://doc.rust-lang.org/1.71.0/std/ops/trait.Drop.html#drop-check
-/// [dropck-nomicon]: https://doc.rust-lang.org/1.71.0/nomicon/dropck.html
+/// [`drop_bounds` lint]: https://doc.rust-lang.org/1.71.0/nightly-rustc/rustc_lint/traits/static.DROP_BOUNDS.html#explanation
+/// [drop checker]: https://doc.rust-lang.org/1.71.0/nomicon/dropck.html
 /// [dropck-generics]: https://doc.rust-lang.org/1.71.0/nomicon/phantom-data.html#generic-parameters-and-drop-checking
 pub struct MaybeDangling<T> {
     value: ManuallyDrop<T>,
     #[cfg(feature = "nightly-dropck_eyepatch")]
     #[allow(nonstandard_style)]
-    // disables `#[may_dangle]` for `T` with a destructor
+    // disables `#[may_dangle]` for `T` invovled in transitive drop glue
     _owns_T: ::core::marker::PhantomData<T>,
 }
 
