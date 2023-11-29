@@ -11,7 +11,7 @@ mod manually_drop;
 
 #[rustfmt::skip]
 /// I really don't get the complexity of `cfg_if!`…
-macro_rules! cfg_match {
+macro_rules! match_cfg {
     (
         _ => { $($expansion:tt)* } $(,)?
     ) => (
@@ -23,17 +23,17 @@ macro_rules! cfg_match {
         $($($rest:tt)+)? )?
     ) => (
         #[cfg($cfg)]
-        crate::cfg_match! { _ => $expansion } $($(
+        crate::match_cfg! { _ => $expansion } $($(
 
         #[cfg(not($cfg))]
-        crate::cfg_match! { $($rest)+ } )?)?
+        crate::match_cfg! { $($rest)+ } )?)?
     );
 
-    // Bonus: expression-friendly syntax: `cfg_match!({ … })`
+    // Bonus: expression-friendly syntax: `match_cfg!({ … })`
     ({
         $($input:tt)*
     }) => ({
-        crate::cfg_match! { $($input)* }
+        crate::match_cfg! { $($input)* }
     });
 }
-use cfg_match;
+use match_cfg;

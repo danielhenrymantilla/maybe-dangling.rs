@@ -292,7 +292,7 @@ impl<T> MaybeDangling<T> {
 }
 
 // The main difference with `ManuallyDrop`: automatic drop glue!
-crate::cfg_match! {
+crate::match_cfg! {
     feature = "nightly-dropck_eyepatch" => {
         #[allow(unsafe_code)]
         unsafe impl<#[may_dangle] T> Drop for MaybeDangling<T> {
