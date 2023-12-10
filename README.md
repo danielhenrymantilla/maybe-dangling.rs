@@ -28,7 +28,7 @@ This crates offers two types, `ManuallyDrop<T>`, and `MaybeDangling<T>`, which d
 
 ## References
 
-  - ### The RFC that shall eventually and ultimately supersede this very crate: <https://github.com/rust-lang/rfcs/pull/3336>
+  - **The RFC that shall eventually and ultimately supersede this very crate: <https://github.com/rust-lang/rfcs/pull/3336>**
 
   - The `miri` PR implementing the check against this: <https://github.com/rust-lang/miri/pull/2985>
 
@@ -36,4 +36,4 @@ This crates offers two types, `ManuallyDrop<T>`, and `MaybeDangling<T>`, which d
 
   - The soundness problem of `::yoke` stemming from not using this: <https://github.com/unicode-org/icu4x/issues/3696>
 
-  - [An URLO thread on the topic, and my post exposing the intention to write this very crate](https://users.rust-lang.org/t/unsafe-code-review-semi-owning-weak-rwlock-t-guard/95706/15?u=yandros)
+  - [An URLO thread on the topic, and a post exposing the intention to write this very crate](https://users.rust-lang.org/t/unsafe-code-review-semi-owning-weak-rwlock-t-guard/95706/15?u=yandros)
