@@ -3,7 +3,6 @@
 #![deny(unsafe_code)]
 #![cfg_attr(feature = "nightly-dropck_eyepatch", feature(dropck_eyepatch))]
 
-#[doc(inline)]
 pub use self::maybe_dangling::MaybeDangling;
 mod maybe_dangling;
 
