@@ -3,6 +3,7 @@
 #![deny(unsafe_code)]
 #![cfg_attr(feature = "nightly-dropck_eyepatch", feature(dropck_eyepatch))]
 
+#[doc(inline)]
 pub use self::maybe_dangling::MaybeDangling;
 mod maybe_dangling;
 
@@ -37,3 +38,9 @@ macro_rules! match_cfg {
     });
 }
 use match_cfg;
+
+#[doc(hidden)]
+/** Not part of the public API */
+pub mod ඞ {
+    pub use ::core;
+}
