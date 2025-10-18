@@ -37,3 +37,9 @@ macro_rules! match_cfg {
     });
 }
 use match_cfg;
+
+#[doc(hidden)]
+/** Not part of the public API */
+pub mod ඞ {
+    pub use ::core;
+}

@@ -263,6 +263,7 @@ use ::core::mem::ManuallyDrop as StdMD;
 /// [`drop_bounds` lint]: https://doc.rust-lang.org/1.71.0/nightly-rustc/rustc_lint/traits/static.DROP_BOUNDS.html#explanation
 /// [drop checker]: https://doc.rust-lang.org/1.71.0/nomicon/dropck.html
 /// [dropck-generics]: https://doc.rust-lang.org/1.71.0/nomicon/phantom-data.html#generic-parameters-and-drop-checking
+#[repr(transparent)]
 pub struct MaybeDangling<T> {
     value: ManuallyDrop<T>,
     #[cfg(feature = "nightly-dropck_eyepatch")]
@@ -288,6 +289,42 @@ impl<T> MaybeDangling<T> {
         #![allow(unsafe_code)]
         // Safety: this is the defuse inherent drop glue pattern.
         unsafe { ManuallyDrop::take(&mut StdMD::new(slot).value) }
+    }
+
+    /// Akin to [`ManuallyDrop::drop()`]: it drops the inner value **in-place**. Raw & `unsafe`
+    /// version of [`drop_in_place!`].
+    ///
+    /// [`drop_in_place!`]: `crate::drop_in_place!`
+    ///
+    /// `Pin` code can rely on this guarantee: [an example](https://docs.rs/droppable_pin).
+    ///
+    /// # Safety
+    ///
+    /// This API is `unsafe` and wildly dangerous. It is very strongly advisable to use
+    /// [`drop_in_place!`] instead.
+    ///
+    /// Indeed, since [`MaybeDangling`] does have embedded drop glue, the moment this function
+    /// returns the only thing that ought to be done is immediately [`::core::mem::forget()`]ting it
+    /// (or wrapping it in a [`ManuallyDrop`]), lest it be dropped implicitly (_e.g._, because of
+    /// some panic), resulting un double-drop unsoundness 😱.
+    ///
+    /// As a matter of fact, this very function needs to feature an abort-on-panic guard to
+    /// handle this problem internally.
+    #[allow(unsafe_code)]
+    pub unsafe fn drop_in_place(this: &mut MaybeDangling<T>) {
+        struct PanicOnDrop();
+        impl Drop for PanicOnDrop {
+            fn drop(&mut self) {
+                panic!("aborting for soundness");
+            }
+        }
+        let _guard = PanicOnDrop();
+        // Unwind-safety: if this unwinds, the `_guard` is dropped, which panics, resulting in a
+        // nested panic which causes the process to abort.
+        unsafe {
+            ManuallyDrop::drop(&mut this.value);
+        }
+        ::core::mem::forget(_guard);
     }
 }
 
@@ -349,4 +386,72 @@ impl<T: Clone> Clone for MaybeDangling<T> {
     fn clone_from(self: &mut Self, source: &Self) {
         T::clone_from(self, source)
     }
+}
+
+/// Safe API around [`MaybeDangling::drop_in_place()`], which performs the mandatory
+/// [`::core::mem::forget()`] on the given var.
+///
+/// Equivalent to doing <code>[drop]::\<[MaybeDangling]\>\($var\)</code>, but for not moving the
+/// given `$var` before doing so (important with, for instance, `Pin` stuff).
+///
+///   - Using [`MaybeDangling::drop_in_place()`] directly is so wildly dangerous that it is
+///     discouraged.
+///
+///   - Using [`ManuallyDrop`] alongside [`ManuallyDrop::drop()`] is significantly less dangerous
+///     w.r.t. double-dropping, but alas just as dangerous w.r.t. leaking when dealing with the
+///     `Pin` contract for which a lack of drop in certain cases is just as unsound.
+///
+/// Remark: this macro requires the given `$var` binding to have been declared `mut`able.
+///
+/// # Example
+///
+/// Imagine, as a library author, wanting to offer the following kind of API:
+///
+/// ```rust
+/// # fn stuff() {}
+/// pub use ::core;
+/// # pub extern crate maybe_dangling; /*
+/// pub use ::maybe_dangling;
+/// # */
+///
+/// macro_rules! my_droppable_pin {(
+///     let mut $var:ident = pin!($value:expr);
+/// ) => (
+///     let mut pinned_value = $crate::maybe_dangling::MaybeDangling::new($value);
+///     macro_rules! drop_it {() => (
+///         $crate::maybe_dangling::drop_in_place!(pinned_value);
+///     )}
+///     #[allow(unused_mut)]
+///     let mut $var = unsafe {
+///         $crate::core::pin::Pin::new_unchecked(&mut *pinned_value)
+///     };
+/// )}
+///
+/// fn main() {
+///     use ::core::{marker::PhantomPinned, pin::*};
+///
+///     my_droppable_pin! {
+///         let mut p = pin!(PhantomPinned);
+///     }
+///     let _: Pin<&mut PhantomPinned> = p.as_mut(); // properly pinned!
+///     for i in 0.. {
+///         if i == 5 {
+///             drop_it!(); // drops the `PhantomPinned` in-place, abiding by the drop guarantee.
+///             // stuff runs after `PhantomPinned` has been dropped, rather than before.
+///             stuff();
+///             break;
+///         }
+///     }
+/// }
+/// ```
+#[macro_export]
+macro_rules! drop_in_place {
+    ( $var:ident $(,)? ) => {
+        // guard against `$var` not being a place (e.g., some `const` or `static mut` or whatnot).
+        _ = &raw const $var;
+        unsafe {
+            $crate::MaybeDangling::drop_in_place(&mut $var);
+        }
+        $crate::ඞ::core::mem::forget($var);
+    };
 }
