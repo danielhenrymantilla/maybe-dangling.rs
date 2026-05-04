@@ -1,5 +1,8 @@
-use crate::ManuallyDrop;
+// The one usage of `StdMD` in this file does not need `MaybeDangling` semantics in it.
 use ::core::mem::ManuallyDrop as StdMD;
+// This used to be `crate::ManuallyDrop` (i.e., with `MaybeDangling` semantics in it),
+// but we can directly use the one from stdlib
+use ::core::mem::ManuallyDrop;
 
 /// Like [`crate::ManuallyDrop`] but for having `drop` glue.
 /// This wrapper is 0-cost.

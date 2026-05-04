@@ -6,6 +6,7 @@
 pub use self::maybe_dangling::MaybeDangling;
 mod maybe_dangling;
 
+#[allow(deprecated)]
 pub use manually_drop::ManuallyDrop;
 mod manually_drop;
 
