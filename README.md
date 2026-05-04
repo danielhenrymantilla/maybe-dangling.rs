@@ -8,7 +8,7 @@ https://github.com/danielhenrymantilla/maybe-dangling.rs)
 https://crates.io/crates/maybe-dangling)
 [![Documentation](https://docs.rs/maybe-dangling/badge.svg)](
 https://docs.rs/maybe-dangling)
-[![MSRV](https://img.shields.io/badge/MSRV-1.65.0-white)](
+[![MSRV](https://img.shields.io/badge/MSRV-beta-white)](
 https://gist.github.com/danielhenrymantilla/9b59de4db8e5f2467ed008b3c450527b)
 [![License](https://img.shields.io/crates/l/maybe-dangling.svg)](
 https://github.com/danielhenrymantilla/maybe-dangling.rs/blob/master/LICENSE-ZLIB)
