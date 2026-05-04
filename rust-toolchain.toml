@@ -1,5 +1,5 @@
 [toolchain]
-channel = 'beta'
+channel = '1.96.0'
 profile = 'minimal'
 components = [
     'rustfmt',
