@@ -356,6 +356,7 @@ crate::match_cfg! {
 impl<T> ::core::ops::DerefMut for MaybeDangling<T> {
     #[inline]
     fn deref_mut(&mut self) -> &mut T {
+        #[expect(non_local_definitions)]
         impl<T> ::core::ops::Deref for MaybeDangling<T> {
             type Target = T;
 
