@@ -1,5 +1,8 @@
-use crate::ManuallyDrop;
+// The one usage of `StdMD` in this file does not need `MaybeDangling` semantics in it.
 use ::core::mem::ManuallyDrop as StdMD;
+// This used to be `crate::ManuallyDrop` (i.e., with `MaybeDangling` semantics in it),
+// but we can directly use the one from stdlib
+use ::core::mem::ManuallyDrop;
 
 /// Like [`crate::ManuallyDrop`] but for having `drop` glue.
 /// This wrapper is 0-cost.
@@ -329,7 +332,7 @@ impl<T> MaybeDangling<T> {
 }
 
 // The main difference with `ManuallyDrop`: automatic drop glue!
-crate::match_cfg! {
+cfg_select! {
     feature = "nightly-dropck_eyepatch" => {
         #[allow(unsafe_code)]
         unsafe impl<#[may_dangle] T> Drop for MaybeDangling<T> {
@@ -356,6 +359,7 @@ crate::match_cfg! {
 impl<T> ::core::ops::DerefMut for MaybeDangling<T> {
     #[inline]
     fn deref_mut(&mut self) -> &mut T {
+        #[expect(non_local_definitions)]
         impl<T> ::core::ops::Deref for MaybeDangling<T> {
             type Target = T;
 
