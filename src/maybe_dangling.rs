@@ -1,5 +1,3 @@
-// The one usage of `StdMD` in this file does not need `MaybeDangling` semantics in it.
-use ::core::mem::ManuallyDrop as StdMD;
 // This used to be `crate::ManuallyDrop` (i.e., with `MaybeDangling` semantics in it),
 // but we can directly use the one from stdlib
 use ::core::mem::ManuallyDrop;
@@ -291,7 +289,7 @@ impl<T> MaybeDangling<T> {
     pub fn into_inner(slot: MaybeDangling<T>) -> T {
         #![allow(unsafe_code)]
         // Safety: this is the defuse inherent drop glue pattern.
-        unsafe { ManuallyDrop::take(&mut StdMD::new(slot).value) }
+        unsafe { ManuallyDrop::take(&mut ManuallyDrop::new(slot).value) }
     }
 
     /// Akin to [`ManuallyDrop::drop()`]: it drops the inner value **in-place**. Raw & `unsafe`

@@ -19,7 +19,6 @@ keywords = ["unsafe", "dangling", "aliasing", "dereferenceable", "manuallydrop"]
 [features]
 default = [
 ]
-acknowledge-unnecessary-manually-drop = []
 
 # Enable and use `#![feature(dropck_eyepatch)]` for `MaybeDangling`.
 nightly-dropck_eyepatch = []
