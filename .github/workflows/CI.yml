@@ -28,15 +28,15 @@ jobs:
     strategy:
       matrix:
         rust-toolchain:
-          - beta
+          - 1.96.0
           - stable
           # Try to guard against a near-future regression.
-          - 1.96.0
+          - beta
         cargo-locked: ['', '--locked']
         feature-nightly-dropck_eyepatch: ['', '--features nightly-dropck_eyepatch']
         exclude:
           # MSRV guarantee only stands for `.lock`-tested dependencies.
-          - rust-toolchain: beta
+          - rust-toolchain: 1.96.0
             cargo-locked: ''
     steps:
       - name: Install Rust toolchain
