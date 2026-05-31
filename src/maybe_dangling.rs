@@ -2,10 +2,9 @@
 // but we can directly use the one from stdlib
 use ::core::mem::ManuallyDrop;
 
-/// Like [`crate::ManuallyDrop`] but for having `drop` glue.
-/// This wrapper is 0-cost.
+/// Like [`ManuallyDrop`] but for having `drop` glue. This wrapper is 0-cost.
 ///
-/// In other words, a <code>[MaybeDangling]\<T\></code> is just like `T`, but
+/// In other words, a [`MaybeDangling<T>`] is just like `T`, but
 /// for having been stripped of aliasing/`dereferenceable`-ity properties.
 ///
 /// Its usage should be quite rare and advanced: if you are intending to keep
@@ -13,8 +12,7 @@ use ::core::mem::ManuallyDrop;
 /// want implicit/automatic drop glue of it without having previously checked
 /// for lack of exhaustion ⚠️.
 ///
-/// That is, it is strongly advisable to be using
-/// <code>[crate::ManuallyDrop]\<T\></code> instead!
+/// That is, it is strongly advisable to be using [`ManuallyDrop<T>`] instead!
 ///
 /// ### Opting into unstable `#[may_dangle]` and the `dropck_eyepatch`
 ///
