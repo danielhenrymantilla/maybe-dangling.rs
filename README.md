@@ -1,6 +1,6 @@
 # `::maybe-dangling`
 
-`ManuallyDrop<T>` and `MaybeDangling<T>` semantics in stable Rust as per <https://github.com/rust-lang/rfcs/pull/3336>
+`MaybeDangling<T>` in stable Rust, as per <https://github.com/rust-lang/rfcs/pull/3336>
 
 [![Repository](https://img.shields.io/badge/repository-GitHub-brightgreen.svg)](
 https://github.com/danielhenrymantilla/maybe-dangling.rs)
@@ -19,12 +19,37 @@ https://github.com/rust-secure-code/safety-dance/)
 
 <!-- Templated by `cargo-generate` using https://github.com/danielhenrymantilla/proc-macro-template -->
 
-This crates offers two types, `ManuallyDrop<T>`, and `MaybeDangling<T>`, which do not carry
+For context, `MaybeDangling<T>`, is like `ManuallyDrop<T>`, insofar it does not carry
 [aliasing/`dereferenceable`-ity properties](https://github.com/rust-lang/rfcs/pull/3336) w.r.t. the
-`T` they each contain, which means they are allowed to:
+`T` it contains. Notably, it means it is allowed to:
  1. have some expired value inside of them, such as `T = &'expired …`,
  1. be fed to a function that does not inspect its value (such as `::core::mem::forget()`),
  1. exhibit well-defined behavior (no UB!).
+
+Moreover, contrary to `ManuallyDrop<T>`, `MaybeDangling<T>` does not forgo `T`'s drop glue.
+
+Another way to look at it is to say that:
+
+ 1. there is `MaybeDangling<T>`, which is a core primitive type, equivalent to `T` in almost every aspect (notably, it carries its very same drop glue), except in its lack of `T`'s default _implicit_ `dereferenceable`-ity-and-lack-of-aliasing semantics (wherein `T`'s _validity_ invariants mandates that these semantics be active, and remain true, upon every time the type is so much as "looked at" (this includes "inert" assignments or calling functions on it, **even a no-op one such as `mem::forget()`**)).
+
+    `MaybeDangling<T>` forgos and loosens this requirement, expecting "only" as a _safety_ invariant
+    that the _safety_ (and thus, _validity_) invariants of its inner `T` be upheld upon _actual_ use
+    of `T`'s API, _e.g._, upon `Deref{,Mut}` of this wrapper.
+
+    **Notably**, this includes, **in a wildly dangerous, maybe even footgunny way, its drop glue**, at least whenever `mem::needs_drop::<T>()`.
+
+ 1. In order to fix this last remark, another type is offered by the stdlib, `ManuallyDrop<T>`, which not only features the very same _loose_ lack-of-`dereferenceable`-ity-and-lack-of-aliasing semantics of `MaybeDangling<T>`, but it also fully disables the inherent/built-in (implicit) drop glue of the overall type. If drop of its inner `T` is desired, it can be achieved by doing so _explicitly_, through [`ManuallyDrop::into_inner()`](https://doc.rust-lang.org/stable/core/mem/struct.ManuallyDrop.html#method.into_inner) or [`ManuallyDrop::drop`](https://doc.rust-lang.org/stable/core/mem/struct.ManuallyDrop.html#method.drop)`{,_in_place}()`.
+
+See the docs of [`::core::mem::MaybeDangling`](https://doc.rust-lang.org/stable/core/mem/struct.MaybeDangling.html) for more info about all this.
+
+Currently, whilst `MaybeDangling<T>` is indeed offered by the stdlib, it is gated behind an `unstable` feature. This crate offers a polyfill of this, achieved by:
+
+ 1. wrapping `ManuallyDrop<T>`
+ 1. manually implementing `Drop` on it to call `ManuallyDrop::drop()`.
+
+This does come with one small potential ergonomic issue compared to the stdlib's, related to `dropck`.
+
+Read the docs of this crate's `MaybeDangling<T>` for more info about this.
 
 ## References
 

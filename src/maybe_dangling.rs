@@ -1,13 +1,10 @@
-// The one usage of `StdMD` in this file does not need `MaybeDangling` semantics in it.
-use ::core::mem::ManuallyDrop as StdMD;
 // This used to be `crate::ManuallyDrop` (i.e., with `MaybeDangling` semantics in it),
 // but we can directly use the one from stdlib
 use ::core::mem::ManuallyDrop;
 
-/// Like [`crate::ManuallyDrop`] but for having `drop` glue.
-/// This wrapper is 0-cost.
+/// Like [`ManuallyDrop`] but for having `drop` glue. This wrapper is 0-cost.
 ///
-/// In other words, a <code>[MaybeDangling]\<T\></code> is just like `T`, but
+/// In other words, a [`MaybeDangling<T>`] is just like `T`, but
 /// for having been stripped of aliasing/`dereferenceable`-ity properties.
 ///
 /// Its usage should be quite rare and advanced: if you are intending to keep
@@ -15,8 +12,7 @@ use ::core::mem::ManuallyDrop;
 /// want implicit/automatic drop glue of it without having previously checked
 /// for lack of exhaustion ⚠️.
 ///
-/// That is, it is strongly advisable to be using
-/// <code>[crate::ManuallyDrop]\<T\></code> instead!
+/// That is, it is strongly advisable to be using [`ManuallyDrop<T>`] instead!
 ///
 /// ### Opting into unstable `#[may_dangle]` and the `dropck_eyepatch`
 ///
@@ -291,7 +287,7 @@ impl<T> MaybeDangling<T> {
     pub fn into_inner(slot: MaybeDangling<T>) -> T {
         #![allow(unsafe_code)]
         // Safety: this is the defuse inherent drop glue pattern.
-        unsafe { ManuallyDrop::take(&mut StdMD::new(slot).value) }
+        unsafe { ManuallyDrop::take(&mut ManuallyDrop::new(slot).value) }
     }
 
     /// Akin to [`ManuallyDrop::drop()`]: it drops the inner value **in-place**. Raw & `unsafe`
